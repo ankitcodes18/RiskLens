@@ -2,8 +2,9 @@ import os
 import sys
 import json
 import asyncio
+import requests
 from typing import Dict, Any, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -18,6 +19,8 @@ from climate_agent import (
     USER_LOCATION,
     SYSTEM_PROMPT
 )
+
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 app = FastAPI(title="Climate AI Agent API", version="1.0.0")
 
@@ -40,8 +43,41 @@ class ChatRequest(BaseModel):
 def health_check():
     return {"status": "ok", "location": USER_LOCATION}
 
+@app.post("/api/transcribe")
+async def transcribe_endpoint(file: UploadFile = File(...)):
+    if not OPENAI_API_KEY:
+        raise HTTPException(status_code=500, detail="OPENAI_API_KEY is not configured on the server.")
+
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="Audio payload is empty.")
+
+        headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+        files = {
+            "file": (file.filename or "audio.webm", content, file.content_type or "audio/webm"),
+            "model": (None, "whisper-1"),
+        }
+
+        response = requests.post(
+            "https://api.openai.com/v1/audio/transcriptions",
+            headers=headers,
+            files=files,
+            timeout=30
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            return {"text": data.get("text", "").strip()}
+        else:
+            raise HTTPException(status_code=response.status_code, detail=f"Transcription failed: {response.text}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server audio processing failed: {str(e)}")
+
 @app.post("/api/chat")
-async def chat_endpoint(request: ChatRequest):
+async def chat_endpoint(request: ChatRequest, raw_request: Request):
     if not request.message or not request.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
 
@@ -70,6 +106,9 @@ async def chat_endpoint(request: ChatRequest):
 
             called_tools = []
             async for event in agent.astream_events(inputs, version="v2"):
+                if await raw_request.is_disconnected():
+                    print("Client disconnected, stopping response generation stream.")
+                    break
                 kind = event["event"]
                 if kind == "on_tool_start":
                     tool_name = event.get("name", "")
