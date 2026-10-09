@@ -34,8 +34,36 @@ export default function Navbar() {
           </span>
         </Link>
 
-        {/* Actions */}
+        {/* Core Product Navigation Links */}
+        <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
+          <Link
+            href="/forecast"
+            className="transition hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-teal-600"
+          >
+            Forecast & Trends
+          </Link>
+          <Link
+            href="/risk-maps"
+            className="transition hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-teal-600"
+          >
+            Risk Maps
+          </Link>
+          <Link
+            href="/assistant"
+            className="transition hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-teal-600"
+          >
+            AI Assistant
+          </Link>
+        </nav>
+
+        {/* User Actions */}
         <nav className="flex items-center gap-3 sm:gap-4">
+          <Link
+            href="/forecast"
+            className="md:hidden text-xs font-semibold text-teal-700 bg-teal-50 border border-teal-200 px-2.5 py-1 rounded"
+          >
+            Forecasts
+          </Link>
           <Link
             href="/login"
             className="text-sm font-medium text-slate-600 transition hover:text-slate-900 px-3 py-1.5 rounded focus-visible:outline-2 focus-visible:outline-teal-600"
