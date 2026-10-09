@@ -496,6 +496,30 @@ def print_safe(text: str):
         print(safe_text)
 
 
+def create_agent():
+    """Create and return configured LangGraph climate agent."""
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.5-flash",
+        google_api_key=GEMINI_API_KEY,
+        temperature=0.1
+    )
+
+    tools = [
+        get_weather_forecast,
+        get_heat_risk,
+        get_flood_risk,
+        get_water_risk,
+        get_historical_weather,
+        get_climate_guidelines
+    ]
+
+    return create_react_agent(
+        model=llm,
+        tools=tools,
+        prompt=SYSTEM_PROMPT
+    )
+
+
 def main():
     print("==================================================")
     print("CLIMATE AI AGENT")
@@ -529,27 +553,7 @@ def main():
     print(f"Latitude: {USER_LOCATION['latitude']}")
     print(f"Longitude: {USER_LOCATION['longitude']}")
 
-    # Initialize Gemini LLM with LangChain & LangGraph
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        google_api_key=GEMINI_API_KEY,
-        temperature=0.1
-    )
-
-    tools = [
-        get_weather_forecast,
-        get_heat_risk,
-        get_flood_risk,
-        get_water_risk,
-        get_historical_weather,
-        get_climate_guidelines
-    ]
-
-    agent = create_react_agent(
-        model=llm,
-        tools=tools,
-        prompt=SYSTEM_PROMPT
-    )
+    agent = create_agent()
 
     while True:
         print("\n--------------------------------------------------")

@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import { Bot, User, FileCheck, Send, ShieldCheck, Sparkles } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface Message {
   role: "user" | "assistant";
@@ -34,67 +36,149 @@ export default function AssistantPage() {
 
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [statusText, setStatusText] = useState("Retrieving climate data and synthesizing response...");
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const sampleQuestions = [
+    "What is the heat risk at my configured location tomorrow?",
     "What should I do if flood risk becomes high in my area?",
     "How should households prepare for high heat stress conditions?",
     "What precautions apply when air quality index enters elevated risk?",
   ];
 
-  const handleAsk = (query: string) => {
+  const handleAsk = async (query: string) => {
+    console.log("handleAsk called:", query);
     if (!query.trim()) return;
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     const userMsg: Message = { role: "user", content: query };
-    setMessages((prev) => [...prev, userMsg]);
+    const assistantPlaceholder: Message = {
+      role: "assistant",
+      content: "",
+      source: "Open-Meteo & Gemini Climate Agent",
+    };
+
+    setMessages((prev) => [...prev, userMsg, assistantPlaceholder]);
     setInput("");
     setLoading(true);
+    setStatusText("Retrieving climate data and synthesizing response...");
 
-    setTimeout(() => {
-      let assistantMsg: Message;
-      if (query.toLowerCase().includes("heat")) {
-        assistantMsg = {
-          role: "assistant",
-          content:
-            "According to official public health and meteorological emergency guidance:",
-          bulletPoints: [
-            "Maintain adequate hydration and avoid direct outdoor exposure during peak solar radiation hours (11:00 AM – 4:00 PM).",
-            "Identify designated cooling shelters or air-conditioned public facilities if indoor temperatures exceed safe thresholds.",
-            "Never leave vulnerable individuals or pets in closed vehicles under any circumstances.",
-            "Monitor symptoms of heat exhaustion: heavy sweating, weakness, dizziness, and nausea.",
-          ],
-          source: "Official Public Health Documentation",
-        };
-      } else if (query.toLowerCase().includes("air quality") || query.toLowerCase().includes("air")) {
-        assistantMsg = {
-          role: "assistant",
-          content:
-            "Based on official environmental protection and air quality monitoring protocols:",
-          bulletPoints: [
-            "Sensitive groups (individuals with respiratory conditions, elderly, and children) should restrict prolonged outdoor physical exertion.",
-            "Keep windows and exterior doors closed during peak particulate accumulation windows.",
-            "Utilize certified HEPA air filtration indoors where available.",
-            "Consult real-time local particulate monitors before planning outdoor recreational activities.",
-          ],
-          source: "Official Environmental Protection Standards",
-        };
-      } else {
-        assistantMsg = {
-          role: "assistant",
-          content:
-            "According to the available official disaster management guidance:",
-          bulletPoints: [
-            "Verify situational updates across authorized municipal communication channels.",
-            "Ensure emergency household supply kits (water, non-perishable food, flashlights, first-aid) are fully stocked.",
-            "Secure unanchored exterior items and identify internal shelter zones within your structure.",
-            "Follow designated local authority instructions if evacuation advisories are formally declared.",
-          ],
-          source: "Official Emergency Management Documentation",
-        };
+    const updateAssistantMessage = (
+      contentUpdater: (prevContent: string) => string,
+      sourceOverride?: string
+    ) => {
+      setMessages((prev) => {
+        let targetIndex = -1;
+        for (let i = prev.length - 1; i >= 0; i--) {
+          if (prev[i].role === "assistant") {
+            targetIndex = i;
+            break;
+          }
+        }
+        if (targetIndex === -1) return prev;
+        return prev.map((msg, idx) => {
+          if (idx !== targetIndex) return msg;
+          return {
+            ...msg,
+            content: contentUpdater(msg.content),
+            source: sourceOverride !== undefined ? sourceOverride : msg.source,
+          };
+        });
+      });
+    };
+
+    const processBlock = (block: string) => {
+      const line = block.trim();
+      if (!line.startsWith("data: ")) return;
+      const dataStr = line.slice(6).trim();
+      if (!dataStr) return;
+
+      try {
+        const data = JSON.parse(dataStr);
+
+        if (data.type === "tool_start") {
+          setStatusText(`Executing tool: ${data.tool}...`);
+        } else if (data.type === "chunk" && data.text) {
+          updateAssistantMessage((prevText) => prevText + data.text);
+        } else if (data.type === "error") {
+          const errorMsg = data.error || "An error occurred while generating the response.";
+          updateAssistantMessage(
+            (prevText) =>
+              prevText
+                ? `${prevText}\n\n⚠️ **Error:** ${errorMsg}`
+                : `⚠️ **Error:** ${errorMsg}`,
+            "Climate AI Agent Error"
+          );
+        }
+      } catch (err) {
+        console.error("Error parsing SSE message:", err);
+      }
+    };
+
+    try {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const response = await fetch(`${apiUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: query }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server returned HTTP ${response.status}`);
       }
 
-      setMessages((prev) => [...prev, assistantMsg]);
+      if (!response.body) {
+        throw new Error("No response body received from server");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() || "";
+
+        for (const block of lines) {
+          processBlock(block);
+        }
+      }
+
+      if (buffer.trim()) {
+        processBlock(buffer.trim());
+      }
+
+      updateAssistantMessage((prevText) =>
+        prevText.trim()
+          ? prevText
+          : "⚠️ No response content received from Climate AI Agent."
+      );
+    } catch (err: any) {
+      if (err.name === "AbortError") {
+        console.log("Stream aborted by user request");
+        return;
+      }
+      console.error("Chat error:", err);
+      updateAssistantMessage(
+        (prevText) =>
+          prevText
+            ? `${prevText}\n\n⚠️ **Connection Interrupted:** ${err.message}`
+            : `⚠️ **Connection Error:** Could not connect to the Climate AI Agent server (${err.message}). Please ensure the Python API server (\`python ai/server.py\`) is running.`,
+        "System Error"
+      );
+    } finally {
       setLoading(false);
-    }, 700);
+    }
   };
 
   return (
@@ -125,7 +209,7 @@ export default function AssistantPage() {
                 key={q}
                 type="button"
                 onClick={() => handleAsk(q)}
-                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 shadow-2xs hover:border-slate-300 hover:bg-slate-50 transition"
+                className="rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 shadow-2xs hover:border-slate-300 hover:bg-slate-50 transition text-left"
               >
                 {q}
               </button>
@@ -171,13 +255,28 @@ export default function AssistantPage() {
                       </div>
                       <div className="space-y-3 max-w-xl">
                         <div className="rounded-lg rounded-tl-xs border border-slate-200 bg-slate-50/50 p-4 text-sm text-slate-800">
-                          <p className="font-medium text-slate-900 mb-2">{m.content}</p>
-                          {m.bulletPoints && (
-                            <ul className="list-disc pl-5 space-y-1.5 text-xs sm:text-sm text-slate-700">
-                              {m.bulletPoints.map((pt, pIdx) => (
-                                <li key={pIdx}>{pt}</li>
-                              ))}
-                            </ul>
+                          {m.bulletPoints ? (
+                            <>
+                              <p className="font-medium text-slate-900 mb-2">{m.content}</p>
+                              <ul className="list-disc pl-5 space-y-1.5 text-xs sm:text-sm text-slate-700">
+                                {m.bulletPoints.map((pt, pIdx) => (
+                                  <li key={pIdx}>{pt}</li>
+                                ))}
+                              </ul>
+                            </>
+                          ) : (
+                            <div className="prose prose-slate max-w-none text-sm leading-relaxed space-y-2 [&_h1]:text-base [&_h1]:font-bold [&_h1]:text-slate-900 [&_h2]:text-sm [&_h2]:font-bold [&_h2]:text-slate-900 [&_h3]:text-xs [&_h3]:font-bold [&_h3]:text-slate-900 [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:space-y-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:space-y-1 [&_p]:mb-2 [&_code]:bg-slate-200 [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:rounded [&_code]:text-xs [&_code]:font-mono [&_table]:w-full [&_table]:border-collapse [&_table]:border [&_table]:border-slate-300 [&_table]:my-2 [&_th]:border [&_th]:border-slate-300 [&_th]:p-2 [&_th]:bg-slate-100 [&_th]:text-xs [&_th]:font-semibold [&_td]:border [&_td]:border-slate-300 [&_td]:p-2 [&_td]:text-xs [&_a]:text-teal-700 [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:border-teal-500 [&_blockquote]:pl-3 [&_blockquote]:italic [&_blockquote]:text-slate-600">
+                              <ReactMarkdown
+                                remarkPlugins={[remarkGfm]}
+                                components={{
+                                  a: ({ node, ...props }) => (
+                                    <a {...props} target="_blank" rel="noopener noreferrer" className="text-teal-700 underline" />
+                                  ),
+                                }}
+                              >
+                                {m.content}
+                              </ReactMarkdown>
+                            </div>
                           )}
 
                           {m.source && (
@@ -203,7 +302,7 @@ export default function AssistantPage() {
                   </div>
                   <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/50 px-4 py-3 text-xs text-slate-500">
                     <Sparkles className="h-3.5 w-3.5 text-teal-600 animate-spin" />
-                    <span>Retrieving official documentation and synthesizing response...</span>
+                    <span>{statusText}</span>
                   </div>
                 </div>
               )}
@@ -222,7 +321,7 @@ export default function AssistantPage() {
                   type="text"
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask about emergency checklists, risk protocols, or guidance..."
+                  placeholder="Ask about emergency checklists, risk protocols, or climate questions..."
                   className="flex-1 rounded-md border border-slate-300 bg-white px-3.5 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-teal-600 focus:outline-none focus:ring-2 focus:ring-teal-100"
                 />
                 <button
@@ -234,7 +333,7 @@ export default function AssistantPage() {
                 </button>
               </div>
               <p className="mt-2 text-center text-[11px] text-slate-400">
-                Responses are synthesized strictly from indexed public advisories and official documentation.
+                Responses are synthesized from real-time meteorological models and verified official climate data tools.
               </p>
             </form>
           </div>
