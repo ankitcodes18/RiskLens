@@ -29,15 +29,15 @@ if hasattr(sys.stderr, "reconfigure"):
     except Exception:
         pass
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
 
-# Check for Gemini API key
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    print("GEMINI_API_KEY is not set. Please configure your Gemini API key before running the agent.")
+# Check for OpenAI API key
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    print("OPENAI_API_KEY is not set. Please configure your OpenAI API key before running the agent.")
     sys.exit(1)
 
 # Global store for user location
@@ -110,7 +110,7 @@ def _fetch_open_meteo_forecast(lat: float, lon: float) -> Optional[Dict[str, Any
             "apparent_temperature_min,precipitation_sum,"
             "precipitation_probability_max,wind_speed_10m_max"
         ),
-        "forecast_days": 3,
+        "forecast_days": 16,
         "timezone": "auto"
     }
     try:
@@ -498,9 +498,9 @@ def print_safe(text: str):
 
 def create_agent():
     """Create and return configured LangGraph climate agent."""
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        google_api_key=GEMINI_API_KEY,
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        api_key=OPENAI_API_KEY,
         temperature=0.1
     )
 
