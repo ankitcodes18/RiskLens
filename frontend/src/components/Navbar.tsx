@@ -35,16 +35,34 @@ export default function Navbar() {
         </Link>
 
         {/* Actions */}
-        <nav className="flex items-center gap-3 sm:gap-4">
+        <nav className="flex items-center gap-2 sm:gap-4">
+          <Link
+            href="/risk-maps"
+            className="text-xs sm:text-sm font-medium text-slate-600 transition hover:text-slate-900 px-2 py-1.5 rounded focus-visible:outline-2 focus-visible:outline-teal-600"
+          >
+            Risk Maps
+          </Link>
+          <Link
+            href="/predictions"
+            className="text-xs sm:text-sm font-medium text-slate-600 transition hover:text-slate-900 px-2 py-1.5 rounded focus-visible:outline-2 focus-visible:outline-teal-600"
+          >
+            Forecast
+          </Link>
+          <Link
+            href="/assistant"
+            className="text-xs sm:text-sm font-medium text-slate-600 transition hover:text-slate-900 px-2 py-1.5 rounded focus-visible:outline-2 focus-visible:outline-teal-600 hidden md:inline"
+          >
+            AI Assistant
+          </Link>
           <Link
             href="/login"
-            className="text-sm font-medium text-slate-600 transition hover:text-slate-900 px-3 py-1.5 rounded focus-visible:outline-2 focus-visible:outline-teal-600"
+            className="text-xs sm:text-sm font-medium text-slate-600 transition hover:text-slate-900 px-2 sm:px-3 py-1.5 rounded focus-visible:outline-2 focus-visible:outline-teal-600"
           >
             Login
           </Link>
           <Link
             href="/signup"
-            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3.5 py-1.5 text-sm font-medium text-white shadow-xs transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-slate-900 focus-visible:outline-offset-2"
+            className="inline-flex items-center justify-center rounded-md bg-slate-900 px-3 sm:px-3.5 py-1.5 text-xs sm:text-sm font-medium text-white shadow-xs transition hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-slate-900 focus-visible:outline-offset-2"
           >
             Get Started
           </Link>
