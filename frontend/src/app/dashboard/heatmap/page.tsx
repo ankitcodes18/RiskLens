@@ -60,12 +60,12 @@ function riskColorExpression(
         "interpolate",
         ["linear"],
         ["get", property],
-        0, "#16a34a",
-        20, "#84cc16",
-        40, "#facc15",
-        60, "#f97316",
-        80, "#ef4444",
-        100, "#991b1b",
+        0, "#86EFAC",    // Light green
+        20, "#BEF264",   // Light lime
+        40, "#FDE68A",   // Light yellow
+        60, "#FDBA74",   // Light orange
+        80, "#FCA5A5",   // Light red
+        100, "#F87171",  // Soft red
     ] as mapboxgl.Expression;
 }
 
@@ -258,39 +258,75 @@ export default function HeatmapPage() {
                             }
                         }
 
+                        // Labels white at low zoom, dark at high zoom.
+                        for (const layer of map.getStyle().layers ?? []) {
+                            if (layer.type !== "symbol") continue;
+                            if (!layer.layout || !("text-field" in layer.layout)) continue;
+
+                            try {
+                                map.setPaintProperty(layer.id, "text-color", [
+                                    "interpolate", ["linear"], ["zoom"],
+                                    5, "#FFFFFF",
+                                    7, "#111827",
+                                ]);
+                                map.setPaintProperty(layer.id, "text-halo-color", [
+                                    "interpolate", ["linear"], ["zoom"],
+                                    5, "#334155",
+                                    7, "#FFFFFF",
+                                ]);
+                                map.setPaintProperty(layer.id, "text-halo-width", 1.2);
+                                map.setPaintProperty(layer.id, "text-halo-blur", 0);
+                            } catch {
+                                // Ignore unsupported style layers.
+                            }
+                        }
+
                         map.addSource(SOURCE_ID, {
                             type: "geojson",
                             data: geojson as GeoJSON.FeatureCollection,
                         });
 
-                        map.addLayer({
-                            id: FILL_LAYER,
-                            type: "fill",
-                            source: SOURCE_ID,
-                            paint: {
-                                "fill-color": riskColorExpression("heatRisk"),
-                                "fill-opacity": 0.82,
-                                "fill-outline-color": "#263449",
-                            },
-                        });
+                        // Keep risk polygons BELOW Mapbox's place/street labels.
+                        // If the fill is added above symbol layers, it washes out names
+                        // such as Rajouri Garden, Punjabi Bagh, and New Delhi.
+                        const firstSymbolLayer = style.layers?.find(
+                            (layer) => layer.type === "symbol"
+                        );
 
-                        map.addLayer({
-                            id: BORDER_LAYER,
-                            type: "line",
-                            source: SOURCE_ID,
-                            paint: {
-                                "line-color": "#cbd5e1",
-                                "line-width": [
-                                    "interpolate",
-                                    ["linear"],
-                                    ["zoom"],
-                                    1, 0.25,
-                                    4, 0.65,
-                                    7, 1.1,
-                                ],
-                                "line-opacity": 0.65,
+                        map.addLayer(
+                            {
+                                id: FILL_LAYER,
+                                type: "fill",
+                                source: SOURCE_ID,
+                                paint: {
+                                    "fill-color": riskColorExpression("heatRisk"),
+                                    "fill-opacity": 0.55,
+                                    "fill-outline-color": "#263449",
+                                },
                             },
-                        });
+                            firstSymbolLayer?.id
+                        );
+
+                        map.addLayer(
+                            {
+                                id: BORDER_LAYER,
+                                type: "line",
+                                source: SOURCE_ID,
+                                paint: {
+                                    "line-color": "#64748b",
+                                    "line-width": [
+                                        "interpolate",
+                                        ["linear"],
+                                        ["zoom"],
+                                        1, 0.25,
+                                        4, 0.65,
+                                        7, 1.1,
+                                    ],
+                                    "line-opacity": 0.8,
+                                },
+                            },
+                            firstSymbolLayer?.id
+                        );
 
                         map.addLayer({
                             id: HOVER_LAYER,
@@ -434,8 +470,8 @@ export default function HeatmapPage() {
                         <button
                             onClick={() => changeMode("heatRisk")}
                             className={`rounded-lg px-4 py-2 text-sm ${mode === "heatRisk"
-                                    ? "bg-orange-500 text-white"
-                                    : "text-slate-400 hover:text-white"
+                                ? "bg-orange-500 text-white"
+                                : "text-slate-400 hover:text-white"
                                 }`}
                         >
                             Heat Risk
@@ -444,8 +480,8 @@ export default function HeatmapPage() {
                         <button
                             onClick={() => changeMode("floodRisk")}
                             className={`rounded-lg px-4 py-2 text-sm ${mode === "floodRisk"
-                                    ? "bg-cyan-600 text-white"
-                                    : "text-slate-400 hover:text-white"
+                                ? "bg-cyan-600 text-white"
+                                : "text-slate-400 hover:text-white"
                                 }`}
                         >
                             Flood Risk
