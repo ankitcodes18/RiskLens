@@ -113,7 +113,19 @@ export default function SpatialMapSection({ location, onLocationChange }: Spatia
           </div>
 
           <Link
-            href="/risk-maps"
+            href={{
+              pathname: "/inner-map",
+              query: {
+                lat: location.lat,
+                lon: location.lon,
+                name: location.name,
+                region: location.region,
+                country: location.country,
+                timezone: location.timezone,
+                source: location.source,
+                layer: activeLayer,
+              },
+            }}
             className="hidden sm:inline-flex items-center gap-1 text-xs font-medium text-teal-700 hover:text-teal-900 transition"
           >
             Full map
@@ -123,7 +135,7 @@ export default function SpatialMapSection({ location, onLocationChange }: Spatia
       </div>
 
       {/* Interactive Leaflet map */}
-      <div className="relative h-[400px] sm:h-[460px] w-full bg-slate-100">
+      <div className="relative h-100 sm:h-115 w-full bg-slate-100">
         <RiskMapInner
           location={location}
           mapData={mapData}

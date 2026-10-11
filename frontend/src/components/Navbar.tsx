@@ -37,6 +37,12 @@ export default function Navbar() {
         {/* Core Product Navigation Links */}
         <nav className="hidden md:flex items-center gap-6 text-sm font-medium text-slate-600">
           <Link
+            href="/"
+            className="transition hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-teal-600"
+          >
+            Home
+          </Link>
+          <Link
             href="/forecast"
             className="transition hover:text-slate-900 focus-visible:outline-2 focus-visible:outline-teal-600"
           >

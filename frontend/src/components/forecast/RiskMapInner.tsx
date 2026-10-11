@@ -12,6 +12,19 @@ interface RiskMapInnerProps {
   onSelectCoordinates: (lat: number, lon: number) => void;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#39;",
+    };
+    return entities[character];
+  });
+}
+
 export default function RiskMapInner({
   location,
   mapData,
@@ -21,13 +34,14 @@ export default function RiskMapInner({
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
   const layerGroupRef = useRef<L.LayerGroup | null>(null);
+  const locationName = escapeHtml(location.name);
 
   useEffect(() => {
     if (!containerRef.current) return;
 
     if (!mapRef.current) {
       // Fix default Leaflet icon paths
-      delete (L.Icon.Default.prototype as any)._getIconUrl;
+      Reflect.deleteProperty(L.Icon.Default.prototype, "_getIconUrl");
       L.Icon.Default.mergeOptions({
         iconRetinaUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png",
         iconUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png",
@@ -95,7 +109,7 @@ export default function RiskMapInner({
       className: "custom-pin-main",
       html: `<div style="background-color: #0F172A; color: white; padding: 4px 8px; border-radius: 6px; border: 2px solid white; font-size: 11px; font-weight: bold; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 4px;">
         <span style="height: 6px; width: 6px; border-radius: 50%; background-color: #0D9488;"></span>
-        ${location.name}
+        ${locationName}
       </div>`,
       iconSize: [120, 30],
       iconAnchor: [60, 15],
@@ -104,7 +118,7 @@ export default function RiskMapInner({
     L.marker([location.lat, location.lon], { icon: mainIcon })
       .bindPopup(
         `<div style="font-family: sans-serif; padding: 4px;">
-          <strong style="color: #0F172A; font-size: 13px;">${location.name}</strong><br/>
+          <strong style="color: #0F172A; font-size: 13px;">${locationName}</strong><br/>
           <span style="font-size: 11px; color: #64748B;">Lat: ${location.lat.toFixed(4)}°, Lon: ${location.lon.toFixed(4)}°</span>
         </div>`
       )
@@ -133,7 +147,7 @@ export default function RiskMapInner({
 
         circle.bindTooltip(
           `<div style="font-family: sans-serif; font-size: 11px;">
-            <strong>${feat.name}</strong><br/>
+            <strong>${escapeHtml(feat.name)}</strong><br/>
             ${activeLayer.toUpperCase()} Score: <b>${val}/100</b>
           </div>`
         );
@@ -141,7 +155,7 @@ export default function RiskMapInner({
         circle.addTo(layerGroupRef.current!);
       });
     }
-  }, [location, mapData, activeLayer]);
+  }, [location, locationName, mapData, activeLayer]);
 
   return <div ref={containerRef} className="h-full w-full rounded-b-xl" />;
 }
