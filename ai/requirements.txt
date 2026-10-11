@@ -13,6 +13,6 @@ pydantic-settings
 asyncio
 aiohttp
 python-multipart
-
+langchain_openai
 
 
