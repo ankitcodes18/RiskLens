@@ -29,15 +29,15 @@ if hasattr(sys.stderr, "reconfigure"):
     except Exception:
         pass
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langchain_core.tools import tool
 from langchain_core.messages import ToolMessage
 
-# Check for Gemini API key
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-if not GEMINI_API_KEY:
-    print("GEMINI_API_KEY is not set. Please configure your Gemini API key before running the agent.")
+# Check for OpenAI API key
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+if not OPENAI_API_KEY:
+    print("OPENAI_API_KEY is not set. Please configure your OpenAI API key before running the agent.")
     sys.exit(1)
 
 # Global store for user location
@@ -47,10 +47,20 @@ USER_LOCATION: Dict[str, Any] = {
     "longitude": 77.2090
 }
 
-# System prompt enforcing strict anti-hallucination policies
+# System prompt enforcing strict anti-hallucination policies and same-language responses
 SYSTEM_PROMPT = """You are a climate analysis agent.
 
 Your highest priority is factual accuracy.
+
+CRITICAL LANGUAGE RULE:
+Automatically identify the language or blend of languages (e.g. English, Hindi, Hinglish, Spanish, French, German, etc.) used in the user's latest message. You MUST generate your entire response in that exact same language or style.
+- If the user asks in English, respond in English.
+- If the user asks in Hindi, respond in Hindi.
+- If the user asks in Hinglish, respond naturally in Hinglish.
+- If the user asks in any other language, respond in that language.
+Maintain this same language consistently throughout your response. Do not switch languages halfway through.
+Do not translate proper nouns, technical terms, place names, API fields, or numerical measurements unnecessarily.
+Changing the response language MUST NOT change or compromise the underlying factual data, risk calculations, or tool accuracy.
 
 NEVER fabricate, estimate, guess, or invent weather or climate measurements.
 
@@ -110,7 +120,7 @@ def _fetch_open_meteo_forecast(lat: float, lon: float) -> Optional[Dict[str, Any
             "apparent_temperature_min,precipitation_sum,"
             "precipitation_probability_max,wind_speed_10m_max"
         ),
-        "forecast_days": 3,
+        "forecast_days": 16,
         "timezone": "auto"
     }
     try:
@@ -496,6 +506,30 @@ def print_safe(text: str):
         print(safe_text)
 
 
+def create_agent():
+    """Create and return configured LangGraph climate agent."""
+    llm = ChatOpenAI(
+        model="gpt-4o-mini",
+        api_key=OPENAI_API_KEY,
+        temperature=0.1
+    )
+
+    tools = [
+        get_weather_forecast,
+        get_heat_risk,
+        get_flood_risk,
+        get_water_risk,
+        get_historical_weather,
+        get_climate_guidelines
+    ]
+
+    return create_react_agent(
+        model=llm,
+        tools=tools,
+        prompt=SYSTEM_PROMPT
+    )
+
+
 def main():
     print("==================================================")
     print("CLIMATE AI AGENT")
@@ -529,27 +563,7 @@ def main():
     print(f"Latitude: {USER_LOCATION['latitude']}")
     print(f"Longitude: {USER_LOCATION['longitude']}")
 
-    # Initialize Gemini LLM with LangChain & LangGraph
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
-        google_api_key=GEMINI_API_KEY,
-        temperature=0.1
-    )
-
-    tools = [
-        get_weather_forecast,
-        get_heat_risk,
-        get_flood_risk,
-        get_water_risk,
-        get_historical_weather,
-        get_climate_guidelines
-    ]
-
-    agent = create_react_agent(
-        model=llm,
-        tools=tools,
-        prompt=SYSTEM_PROMPT
-    )
+    agent = create_agent()
 
     while True:
         print("\n--------------------------------------------------")
