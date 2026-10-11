@@ -1,151 +1,166 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Layers, ZoomIn, ZoomOut, Maximize2, ShieldAlert } from "lucide-react";
+import { useState, useEffect } from "react";
+import dynamic from "next/dynamic";
+import { Layers, MapPin, Info, Flame, Waves, Droplets } from "lucide-react";
+import { MapLayersResponse, NormalizedLocation } from "@/types/forecast";
+
+const RiskMapInner = dynamic(() => import("./forecast/RiskMapInner"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-slate-100 text-xs font-medium text-slate-500">
+      Loading map…
+    </div>
+  ),
+});
+
+const DEFAULT_LOCATION: NormalizedLocation = {
+  lat: 28.6139,
+  lon: 77.209,
+  name: "Delhi",
+  region: "National Capital Territory of Delhi",
+  country: "India",
+  countryCode: "IN",
+  timezone: "Asia/Kolkata",
+  source: "search",
+};
 
 interface RiskMapPreviewProps {
   compact?: boolean;
+  initialLocation?: NormalizedLocation;
 }
 
-export default function RiskMapPreview({ compact = false }: RiskMapPreviewProps) {
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [imageError, setImageError] = useState(false);
+export default function RiskMapPreview({
+  compact = false,
+  initialLocation = DEFAULT_LOCATION,
+}: RiskMapPreviewProps) {
+  const [location, setLocation] = useState<NormalizedLocation>(initialLocation);
+  const [activeLayer, setActiveLayer] = useState<"heat" | "flood" | "water">("heat");
+  const [mapData, setMapData] = useState<MapLayersResponse | undefined>(undefined);
 
   useEffect(() => {
     let isMounted = true;
-
-    async function detectAsset() {
-      // Check standard asset paths with priority on RiskMap.png
-      const candidates = [
-        "/assets/RiskMap.png",
-        "/assets/RiskMap.jpg",
-        "/assets/RiskMap.jpeg",
-        "/assets/RiskMap.webp",
-        "/assets/riskmap.png",
-        "/assets/risk-map.png",
-        "/assets/risk-map.jpg",
-        "/RiskMap.png",
-        "/riskmap.png",
-      ];
-
-      for (const path of candidates) {
-        try {
-          const imgCheck = await fetch(path, { method: "HEAD" });
-          if (imgCheck.ok && isMounted) {
-            setImageSrc(path);
-            setLoading(false);
-            return;
-          }
-        } catch {
-          // continue
+    async function loadMapLayers() {
+      try {
+        const res = await fetch(
+          `/api/forecast/map-layers?lat=${location.lat}&lon=${location.lon}`
+        );
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          setMapData(data);
         }
-      }
-
-      if (isMounted) {
-        setLoading(false);
+      } catch (err) {
+        console.error("Map layers fetch error:", err);
       }
     }
-
-    detectAsset();
-
+    loadMapLayers();
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [location.lat, location.lon]);
+
+  const handleSelectCoordinates = async (lat: number, lon: number) => {
+    try {
+      const res = await fetch(
+        `/api/geocoding/reverse?lat=${lat}&lon=${lon}&source=map`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.location) {
+          setLocation(data.location);
+        }
+      }
+    } catch (err) {
+      console.error("Map coordinate select error:", err);
+    }
+  };
 
   return (
     <div className="w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xs transition hover:border-slate-300">
       {/* Product UI Top Bar */}
-      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-4 py-2.5">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-slate-200 bg-slate-50/80 px-4 py-3">
+        <div className="flex items-center gap-2.5">
           <span className="flex h-6 w-6 items-center justify-center rounded bg-teal-100/70 text-teal-800">
             <Layers className="h-3.5 w-3.5" />
           </span>
-          <span className="text-xs font-semibold text-slate-800">
-            RiskLens Map Viewer
-          </span>
-          <span className="hidden sm:inline-flex items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-medium text-teal-700">
-            <span className="h-1.5 w-1.5 rounded-full bg-teal-500 animate-pulse" />
-            Active Layer: Multi-Hazard
-          </span>
-        </div>
-
-        {/* Minimal Viewer Controls */}
-        <div className="flex items-center gap-1 text-slate-500">
-          <button
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-900 transition"
-            aria-label="Zoom in"
-          >
-            <ZoomIn className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            className="flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-900 transition"
-            aria-label="Zoom out"
-          >
-            <ZoomOut className="h-3.5 w-3.5" />
-          </button>
-          <button
-            type="button"
-            className="hidden sm:flex h-7 w-7 items-center justify-center rounded border border-slate-200 bg-white hover:bg-slate-50 hover:text-slate-900 transition"
-            aria-label="Maximize map view"
-          >
-            <Maximize2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      </div>
-
-      {/* Map Canvas / Provided Asset Frame */}
-      <div className={`relative w-full bg-slate-100 ${compact ? "h-[280px]" : "h-[340px] sm:h-[420px]"}`}>
-        {imageSrc && !imageError ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={imageSrc}
-            alt="RiskLens Environmental Risk Map"
-            className="h-full w-full object-cover object-center"
-            onError={() => setImageError(true)}
-          />
-        ) : (
-          <div className="flex h-full w-full flex-col items-center justify-center p-6 text-center">
-            {loading ? (
-              <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
-                <span className="h-3 w-3 animate-spin rounded-full border-2 border-teal-600 border-t-transparent" />
-                Detecting map asset...
-              </div>
-            ) : (
-              <div className="max-w-md space-y-3 rounded-lg border border-dashed border-slate-300 bg-white/80 p-6 backdrop-blur-xs">
-                <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-600">
-                  <ShieldAlert className="h-5 w-5 text-teal-700" />
-                </div>
-                <div>
-                  <h4 className="text-sm font-semibold text-slate-900">
-                    Awaiting RiskMap.png
-                  </h4>
-                  <p className="mt-1 text-xs text-slate-500 leading-relaxed">
-                    Add your risk map image named{" "}
-                    <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] font-semibold text-teal-700">
-                      RiskMap.png
-                    </code>{" "}
-                    into the{" "}
-                    <code className="rounded bg-slate-100 px-1 py-0.5 font-mono text-[11px] text-slate-700">
-                      assets
-                    </code>{" "}
-                    folder. It will automatically render here.
-                  </p>
-                </div>
-              </div>
-            )}
+          <div>
+            <h3 className="text-xs font-semibold text-slate-900">
+              RiskLens Map Viewer
+            </h3>
+            <p className="text-[11px] text-slate-500">
+              Click anywhere on the map to inspect location-specific risk layers.
+            </p>
           </div>
-        )}
+        </div>
+
+        {/* Layer Controls */}
+        <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white p-1 text-xs font-medium">
+          <button
+            type="button"
+            onClick={() => setActiveLayer("heat")}
+            className={`flex items-center gap-1 rounded px-2.5 py-1 transition ${
+              activeLayer === "heat"
+                ? "bg-red-50 text-red-700 font-semibold border border-red-200"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Flame className="h-3 w-3 text-red-500" />
+            <span>Heat layer</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveLayer("flood")}
+            className={`flex items-center gap-1 rounded px-2.5 py-1 transition ${
+              activeLayer === "flood"
+                ? "bg-blue-50 text-blue-700 font-semibold border border-blue-200"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Waves className="h-3 w-3 text-blue-500" />
+            <span>Flood layer</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveLayer("water")}
+            className={`flex items-center gap-1 rounded px-2.5 py-1 transition ${
+              activeLayer === "water"
+                ? "bg-teal-50 text-teal-700 font-semibold border border-teal-200"
+                : "text-slate-600 hover:text-slate-900"
+            }`}
+          >
+            <Droplets className="h-3 w-3 text-teal-600" />
+            <span>Water stress</span>
+          </button>
+        </div>
       </div>
 
-      {/* Product UI Bottom Strip: Legend and Scale */}
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 text-xs text-slate-600">
+      {/* Interactive Leaflet Map Container */}
+      <div className={`relative w-full bg-slate-100 ${compact ? "h-[320px]" : "h-[420px] sm:h-[500px]"}`}>
+        <RiskMapInner
+          location={location}
+          mapData={mapData}
+          activeLayer={activeLayer}
+          onSelectCoordinates={handleSelectCoordinates}
+        />
+      </div>
+
+      {/* Product UI Bottom Strip: Legend, Coordinates & Attribution */}
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-2.5 text-xs text-slate-600">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-slate-700">Risk Severity:</span>
+          <MapPin className="h-3.5 w-3.5 text-teal-700" />
+          <span className="font-medium text-slate-900">{location.name}</span>
+          {location.country && <span className="text-slate-400">({location.country})</span>}
+          <span className="text-slate-300">·</span>
+          <span className="font-mono text-[11px] text-slate-500">
+            {location.lat.toFixed(4)}°, {location.lon.toFixed(4)}°
+          </span>
+        </div>
+
+        <div className="flex items-center gap-4 text-xs text-slate-500">
           <div className="flex items-center gap-2">
+            <span className="text-slate-500">Severity:</span>
             <span className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
               Low
@@ -163,12 +178,11 @@ export default function RiskMapPreview({ compact = false }: RiskMapPreviewProps)
               Extreme
             </span>
           </div>
-        </div>
 
-        <div className="hidden sm:flex items-center gap-3 text-[11px] text-slate-500">
-          <span>Resolution: 100m² grid</span>
-          <span>•</span>
-          <span>Projection: EPSG:4326</span>
+          <span className="hidden md:flex items-center gap-1 text-[11px] text-slate-400">
+            <Info className="h-3 w-3" />
+            {mapData?.attribution || "© OpenStreetMap contributors, CARTO basemap"}
+          </span>
         </div>
       </div>
     </div>
